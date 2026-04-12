@@ -49,3 +49,18 @@ export const getDifficultyBgClass = (color: string): string => {
     default: return 'bg-gray-900 dark:bg-gray-100';
   }
 };
+
+export const getHexByColorName = (color: string): string => {
+  switch (color) {
+    case 'Gray': return '#808080';
+    case 'Brown': return '#804000';
+    case 'Green': return '#008000';
+    case 'Cyan': return '#00C0C0';
+    case 'Blue': return '#0000FF';
+    case 'Yellow': return '#C0C000';
+    case 'Orange': return '#FF8000';
+    case 'Red': return '#FF0000';
+    case 'Unrated': return '#1e1e1e';
+    default: return '#1e1e1e';
+  }
+};
