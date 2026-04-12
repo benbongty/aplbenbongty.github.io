@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Problem, ProblemModel, MergedProblem } from './types';
 import { getDifficultyColor, getDifficultyColorClass, getDifficultyColorHex, getHexByColorName } from './utils';
-import { Search, Filter, ArrowUpDown, Loader2, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, Loader2, RefreshCw, CheckCircle2, Bookmark, BookmarkCheck, ListTodo, Trophy } from 'lucide-react';
 import Calendar from './Calendar';
 
 const COLORS = ['Gray', 'Brown', 'Green', 'Cyan', 'Blue', 'Yellow', 'Orange', 'Red', 'Unrated'];
@@ -52,7 +52,8 @@ export default function App() {
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({});
   const [isFetchingUser, setIsFetchingUser] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'list' | 'calendar'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'todo'>('list');
+  const [todoList, setTodoList] = useState<Set<string>>(new Set());
 
   const [page, setPage] = useState(1);
   const itemsPerPage = 100;
@@ -93,6 +94,15 @@ export default function App() {
 
     fetchData();
   }, []);
+
+  const toggleTodo = (id: string) => {
+    setTodoList(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const fetchUserSubmissions = async () => {
     if (!username.trim()) return;
@@ -238,18 +248,29 @@ export default function App() {
         </div>
         
         {/* Tabs */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-6 overflow-x-auto">
           <button 
             onClick={() => setActiveTab('list')}
-            className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+            className={`py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'list' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
           >
             Problem List
           </button>
           <button 
             onClick={() => setActiveTab('calendar')}
-            className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'calendar' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+            className={`py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'calendar' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
           >
             Calendar
+          </button>
+          <button 
+            onClick={() => setActiveTab('todo')}
+            className={`py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'todo' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+          >
+            To-Do Tasks
+            {todoList.size > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                {todoList.size}
+              </span>
+            )}
           </button>
         </div>
       </header>
@@ -354,12 +375,13 @@ export default function App() {
                         <ArrowUpDown className="w-3 h-3 text-gray-400" />
                       </div>
                     </th>
+                    <th className="px-4 py-3 sm:px-6 sm:py-4 font-semibold text-gray-900 w-16 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {paginatedProblems.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="px-4 py-12 sm:px-6 sm:py-16 text-center text-gray-500">
+                      <td colSpan={4} className="px-4 py-12 sm:px-6 sm:py-16 text-center text-gray-500">
                         No problems found matching your criteria.
                       </td>
                     </tr>
@@ -398,6 +420,15 @@ export default function App() {
                             <span className="text-gray-400">-</span>
                           )}
                         </td>
+                        <td className="px-4 py-2.5 sm:px-6 sm:py-3 text-center">
+                          <button 
+                            onClick={() => toggleTodo(p.id)}
+                            className={`p-1.5 rounded-md transition-colors ${todoList.has(p.id) ? 'text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:text-blue-600 hover:bg-gray-100'}`}
+                            title={todoList.has(p.id) ? "Remove from To-Do" : "Add to To-Do"}
+                          >
+                            {todoList.has(p.id) ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -432,8 +463,108 @@ export default function App() {
             </div>
           </div>
         </div>
-        ) : (
+        ) : activeTab === 'calendar' ? (
           <Calendar dailyCounts={dailyCounts} username={username} />
+        ) : (
+          <div className="max-w-4xl mx-auto">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
+                <ListTodo className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">To-Do List</h2>
+                <p className="text-sm text-gray-500">Track specific problems you want to solve</p>
+              </div>
+            </div>
+
+            {todoList.size > 0 && Array.from(todoList).every(id => solvedProblems.has(id)) && (
+              <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-4 shadow-sm">
+                <div className="p-2 bg-green-100 text-green-600 rounded-full">
+                  <Trophy className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-green-800 font-bold text-lg">Congratulations!</h3>
+                  <p className="text-green-700 text-sm">You have successfully AC'd all problems in your To-Do list.</p>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              {todoList.size === 0 ? (
+                <div className="p-12 text-center text-gray-500">
+                  <ListTodo className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+                  <p className="text-lg font-medium text-gray-900 mb-1">Your To-Do list is empty</p>
+                  <p className="text-sm">Go to the Problem List and click the bookmark icon to add problems here.</p>
+                  <button 
+                    onClick={() => setActiveTab('list')}
+                    className="mt-4 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors"
+                  >
+                    Browse Problems
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 sm:px-6 sm:py-4 font-semibold text-gray-900 w-20 sm:w-24">Status</th>
+                        <th className="px-4 py-3 sm:px-6 sm:py-4 font-semibold text-gray-900">Problem</th>
+                        <th className="px-4 py-3 sm:px-6 sm:py-4 font-semibold text-gray-900 w-24 sm:w-32">Rating</th>
+                        <th className="px-4 py-3 sm:px-6 sm:py-4 font-semibold text-gray-900 w-16 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {problems.filter(p => todoList.has(p.id)).map(p => (
+                        <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-2.5 sm:px-6 sm:py-3">
+                            {solvedProblems.has(p.id) ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-md bg-green-50 text-green-700 text-[10px] sm:text-xs font-medium border border-green-200">
+                                <CheckCircle2 className="w-3 h-3" /> AC
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 text-xs pl-2">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 sm:px-6 sm:py-3">
+                            <div className="flex items-center gap-2 sm:gap-2.5">
+                              <DifficultyCircle difficulty={p.difficulty} />
+                              <a 
+                                href={`https://atcoder.jp/contests/${p.contest_id}/tasks/${p.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`font-medium hover:underline truncate max-w-[160px] sm:max-w-xs md:max-w-md lg:max-w-lg text-sm ${solvedProblems.has(p.id) ? 'text-green-600' : 'text-blue-600'}`}
+                                title={p.title}
+                              >
+                                {p.title}
+                              </a>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 sm:px-6 sm:py-3">
+                            {p.difficulty !== null ? (
+                              <span className={`font-semibold ${getDifficultyColorClass(p.color || 'Unrated')}`}>
+                                {p.difficulty}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 sm:px-6 sm:py-3 text-center">
+                            <button 
+                              onClick={() => toggleTodo(p.id)}
+                              className="p-1.5 rounded-md hover:bg-red-50 transition-colors text-gray-400 hover:text-red-500"
+                              title="Remove from To-Do"
+                            >
+                              <BookmarkCheck className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </main>
     </div>

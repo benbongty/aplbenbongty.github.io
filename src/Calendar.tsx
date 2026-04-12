@@ -7,7 +7,7 @@ interface CalendarProps {
 }
 
 export default function Calendar({ dailyCounts, username }: CalendarProps) {
-  const [dailyGoal, setDailyGoal] = useState(1);
+  const [dailyGoal, setDailyGoal] = useState(5);
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const year = currentDate.getFullYear();
@@ -90,18 +90,18 @@ export default function Calendar({ dailyCounts, username }: CalendarProps) {
               key={day} 
               className={`relative h-16 sm:h-20 lg:h-24 rounded-lg sm:rounded-xl border p-1 sm:p-2 lg:p-3 transition-all duration-200 group cursor-pointer
                 ${isGoalMet ? 'bg-green-500 border-green-600 shadow-sm hover:bg-green-600' : 
-                  count > 0 ? 'bg-green-100 border-green-200 hover:bg-green-200' : 
+                  count > 0 ? 'bg-yellow-100 border-yellow-300 hover:bg-yellow-200' : 
                   'bg-white border-gray-200 hover:border-blue-300 hover:shadow-sm'}
                 ${isToday ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
               `}
             >
-              <span className={`text-xs sm:text-sm font-bold ${isGoalMet ? 'text-white' : count > 0 ? 'text-green-800' : 'text-gray-700'}`}>
+              <span className={`text-xs sm:text-sm font-bold ${isGoalMet ? 'text-white' : count > 0 ? 'text-yellow-800' : 'text-gray-700'}`}>
                 {day}
               </span>
               
               {count > 0 && (
                 <div className={`absolute bottom-1 right-1 sm:bottom-2 sm:right-2 lg:bottom-3 lg:right-3 flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 rounded-full font-bold text-[10px] sm:text-xs lg:text-sm shadow-sm
-                  ${isGoalMet ? 'bg-white text-green-600' : 'bg-green-500 text-white'}
+                  ${isGoalMet ? 'bg-white text-green-600' : 'bg-yellow-500 text-white'}
                 `}>
                   {count}
                 </div>
