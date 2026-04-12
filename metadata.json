@@ -1,0 +1,5 @@
+{
+  "name": "AtCoder Problem List",
+  "description": "A tool to filter and sort AtCoder problems by difficulty color and rating.",
+  "requestFramePermissions": []
+}
