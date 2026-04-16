@@ -6,10 +6,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Problem, ProblemModel, MergedProblem } from './types';
 import { getDifficultyColor, getDifficultyColorClass, getDifficultyColorHex, getHexByColorName } from './utils';
-import { Search, Filter, ArrowUpDown, Loader2, RefreshCw, CheckCircle2, Bookmark, BookmarkCheck, ListTodo, Trophy } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, Loader2, RefreshCw, CheckCircle2, Bookmark, BookmarkCheck, ListTodo, Trophy, Plus, FolderPlus, FolderOpen, Trash2, X } from 'lucide-react';
 import Calendar from './Calendar';
 
 const COLORS = ['Gray', 'Brown', 'Green', 'Cyan', 'Blue', 'Yellow', 'Orange', 'Red', 'Unrated'];
+
+interface CustomList {
+  id: string;
+  name: string;
+  problems: string[];
+}
 
 const DifficultyCircle = ({ difficulty }: { difficulty: number | null }) => {
   if (difficulty === null) {
@@ -47,16 +53,41 @@ export default function App() {
   const [maxRating, setMaxRating] = useState<number | ''>('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(() => localStorage.getItem('atcoder_username') || '');
   const [solvedProblems, setSolvedProblems] = useState<Set<string>>(new Set());
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({});
   const [isFetchingUser, setIsFetchingUser] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'todo'>('list');
-  const [todoList, setTodoList] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'todo' | 'custom'>('list');
+  const [todoList, setTodoList] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('atcoder_todo_list');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+  
+  const [customLists, setCustomLists] = useState<CustomList[]>(() => {
+    const saved = localStorage.getItem('atcoder_custom_lists');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [currentCustomListId, setCurrentCustomListId] = useState<string | null>(null);
+  
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [problemToAdd, setProblemToAdd] = useState<string | null>(null);
+  const [newListName, setNewListName] = useState('');
 
   const [page, setPage] = useState(1);
   const itemsPerPage = 100;
+
+  useEffect(() => {
+    localStorage.setItem('atcoder_username', username);
+  }, [username]);
+
+  useEffect(() => {
+    localStorage.setItem('atcoder_todo_list', JSON.stringify(Array.from(todoList)));
+  }, [todoList]);
+
+  useEffect(() => {
+    localStorage.setItem('atcoder_custom_lists', JSON.stringify(customLists));
+  }, [customLists]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -102,6 +133,42 @@ export default function App() {
       else next.add(id);
       return next;
     });
+  };
+
+  const openAddModal = (id: string) => {
+    setProblemToAdd(id);
+    setIsAddModalOpen(true);
+  };
+
+  const createListAndAddProblem = () => {
+    if (!newListName.trim() || !problemToAdd) return;
+    const newList: CustomList = {
+      id: Date.now().toString(),
+      name: newListName.trim(),
+      problems: [problemToAdd]
+    };
+    setCustomLists(prev => [...prev, newList]);
+    setNewListName('');
+    setIsAddModalOpen(false);
+    setProblemToAdd(null);
+  };
+
+  const toggleProblemInCustomList = (listId: string, problemId: string) => {
+    setCustomLists(prev => prev.map(list => {
+      if (list.id !== listId) return list;
+      const exists = list.problems.includes(problemId);
+      return {
+        ...list,
+        problems: exists ? list.problems.filter(id => id !== problemId) : [...list.problems, problemId]
+      };
+    }));
+  };
+
+  const deleteCustomList = (listId: string) => {
+    setCustomLists(prev => prev.filter(l => l.id !== listId));
+    if (currentCustomListId === listId) {
+      setCurrentCustomListId(null);
+    }
   };
 
   const fetchUserSubmissions = async () => {
@@ -272,6 +339,12 @@ export default function App() {
               </span>
             )}
           </button>
+          <button 
+            onClick={() => { setActiveTab('custom'); setCurrentCustomListId(null); }}
+            className={`py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'custom' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+          >
+            Custom Problemsets
+          </button>
         </div>
       </header>
 
@@ -421,13 +494,22 @@ export default function App() {
                           )}
                         </td>
                         <td className="px-4 py-2.5 sm:px-6 sm:py-3 text-center">
-                          <button 
-                            onClick={() => toggleTodo(p.id)}
-                            className={`p-1.5 rounded-md transition-colors ${todoList.has(p.id) ? 'text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:text-blue-600 hover:bg-gray-100'}`}
-                            title={todoList.has(p.id) ? "Remove from To-Do" : "Add to To-Do"}
-                          >
-                            {todoList.has(p.id) ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
-                          </button>
+                          <div className="flex items-center justify-center gap-1 sm:gap-2">
+                            <button 
+                              onClick={() => toggleTodo(p.id)}
+                              className={`p-1.5 rounded-md transition-colors ${todoList.has(p.id) ? 'text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:text-blue-600 hover:bg-gray-100'}`}
+                              title={todoList.has(p.id) ? "Remove from To-Do" : "Add to To-Do"}
+                            >
+                              {todoList.has(p.id) ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+                            </button>
+                            <button
+                              onClick={() => openAddModal(p.id)}
+                              className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                              title="Add to Custom Problemset"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -465,6 +547,135 @@ export default function App() {
         </div>
         ) : activeTab === 'calendar' ? (
           <Calendar dailyCounts={dailyCounts} username={username} />
+        ) : activeTab === 'custom' ? (
+          <div className="flex flex-col lg:flex-row gap-6">
+            <aside className="w-full lg:w-72 flex-shrink-0">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <FolderOpen className="w-4 h-4 text-indigo-600" /> My Problemsets
+                  </h2>
+                </div>
+                <div className="p-2 space-y-1 max-h-[300px] lg:max-h-[500px] overflow-y-auto">
+                  {customLists.map(list => (
+                    <div 
+                      key={list.id}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-colors group ${currentCustomListId === list.id ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-100 text-gray-700'}`}
+                      onClick={() => setCurrentCustomListId(list.id)}
+                    >
+                      <span className="font-medium truncate flex-1">{list.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-1.5 py-0.5 rounded-md ${currentCustomListId === list.id ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-200 text-gray-600'}`}>{list.problems.length}</span>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); deleteCustomList(list.id); }}
+                          className="p-1 opacity-0 group-hover:opacity-100 hover:bg-red-100 hover:text-red-600 rounded transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {customLists.length === 0 && (
+                    <div className="px-3 py-6 text-center text-sm text-gray-500">
+                      No problemsets yet.<br />Click '+' on a problem to create one!
+                    </div>
+                  )}
+                </div>
+              </div>
+            </aside>
+            <div className="flex-1 min-w-0">
+              {currentCustomListId ? (() => {
+                const activeList = customLists.find(l => l.id === currentCustomListId);
+                if (!activeList) return null;
+                const listProblems = problems.filter(p => activeList.problems.includes(p.id));
+                return (
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="p-4 sm:p-6 border-b border-gray-200 flex items-center justify-between">
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900">{activeList.name}</h2>
+                        <p className="text-sm text-gray-500 mt-1">{listProblems.length} {listProblems.length === 1 ? 'problem' : 'problems'}</p>
+                      </div>
+                    </div>
+                    {listProblems.length === 0 ? (
+                      <div className="p-12 text-center text-gray-500">
+                        <FolderPlus className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+                        <p className="text-lg font-medium text-gray-900 mb-1">This list is empty</p>
+                        <p className="text-sm">Go to the Problem List and add some problems here.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm whitespace-nowrap">
+                          <thead className="bg-gray-50 border-b border-gray-200">
+                            <tr>
+                              <th className="px-4 py-3 sm:px-6 sm:py-4 font-semibold text-gray-900 w-20 sm:w-24">Status</th>
+                              <th className="px-4 py-3 sm:px-6 sm:py-4 font-semibold text-gray-900">Problem</th>
+                              <th className="px-4 py-3 sm:px-6 sm:py-4 font-semibold text-gray-900 w-24 sm:w-32">Rating</th>
+                              <th className="px-4 py-3 sm:px-6 sm:py-4 font-semibold text-gray-900 w-16 text-center">Remove</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {listProblems.map(p => (
+                              <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                                <td className="px-4 py-2.5 sm:px-6 sm:py-3">
+                                  {solvedProblems.has(p.id) ? (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-md bg-green-50 text-green-700 text-[10px] sm:text-xs font-medium border border-green-200">
+                                      <CheckCircle2 className="w-3 h-3" /> AC
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-300 text-xs pl-2">-</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2.5 sm:px-6 sm:py-3">
+                                  <div className="flex items-center gap-2 sm:gap-2.5">
+                                    <DifficultyCircle difficulty={p.difficulty} />
+                                    <a 
+                                      href={`https://atcoder.jp/contests/${p.contest_id}/tasks/${p.id}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className={`font-medium hover:underline truncate max-w-[160px] sm:max-w-xs md:max-w-md lg:max-w-lg text-sm ${solvedProblems.has(p.id) ? 'text-green-600' : 'text-blue-600'}`}
+                                      title={p.title}
+                                    >
+                                      {p.title}
+                                    </a>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2.5 sm:px-6 sm:py-3">
+                                  {p.difficulty !== null ? (
+                                    <span className={`font-semibold ${getDifficultyColorClass(p.color || 'Unrated')}`}>
+                                      {p.difficulty}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2.5 sm:px-6 sm:py-3 text-center">
+                                  <button 
+                                    onClick={() => toggleProblemInCustomList(activeList.id, p.id)}
+                                    className="p-1.5 rounded-md hover:bg-red-50 transition-colors text-gray-400 hover:text-red-500"
+                                    title="Remove from list"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })() : (
+                <div className="h-full flex flex-col items-center justify-center py-20 text-center border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                  <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
+                    <FolderOpen className="w-8 h-8 text-indigo-300" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">No Problemset Selected</h3>
+                  <p className="text-gray-500 max-w-sm mt-2">Select a problemset from the sidebar to view its problems, or go to the Problem List to create a new one.</p>
+                </div>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="max-w-4xl mx-auto">
             <div className="flex items-center gap-3 mb-6">
@@ -567,6 +778,69 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Add to Custom List Modal */}
+      {isAddModalOpen && problemToAdd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+              <h3 className="font-bold text-gray-900">Add to Custom List</h3>
+              <button 
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700 rounded-md transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-4 overflow-y-auto">
+              {customLists.length > 0 ? (
+                <div className="space-y-2 mb-6">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Your Lists</p>
+                  {customLists.map(list => {
+                    const hasProblem = list.problems.includes(problemToAdd);
+                    return (
+                      <button
+                        key={list.id}
+                        onClick={() => toggleProblemInCustomList(list.id, problemToAdd)}
+                        className={`w-full flex items-center justify-between p-3 rounded-lg border text-left transition-colors ${hasProblem ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'}`}
+                      >
+                        <span className={`font-medium text-sm ${hasProblem ? 'text-indigo-900' : 'text-gray-700'}`}>{list.name}</span>
+                        {hasProblem ? (
+                          <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                        ) : (
+                          <Plus className="w-4 h-4 text-gray-400" />
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+
+              <div className="pt-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Create New List</p>
+                <div className="flex gap-2">
+                  <input 
+                    type="text"
+                    placeholder="E.g. DP Problems"
+                    value={newListName}
+                    onChange={(e) => setNewListName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && createListAndAddProblem()}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                  <button 
+                    onClick={createListAndAddProblem}
+                    disabled={!newListName.trim()}
+                    className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
