@@ -85,8 +85,10 @@ export default function App() {
       if (u) {
         // Load data from DB
         const profile = await getUserProfile();
+        let loadedUser = '';
         if (profile) {
-          setUsername(profile.atcoderUsername || '');
+          loadedUser = profile.atcoderUsername || '';
+          setUsername(loadedUser);
           setSelectedColors(new Set(profile.selectedColors || COLORS));
           setMinRating(profile.minRating !== null ? profile.minRating : '');
           setMaxRating(profile.maxRating !== null ? profile.maxRating : '');
@@ -102,6 +104,9 @@ export default function App() {
         setCalendarNotes(notesMap);
 
         setIsDbLoaded(true);
+        if (loadedUser) {
+          fetchUserSubmissions(loadedUser);
+        }
       } else {
         setIsDbLoaded(false);
       }
@@ -254,13 +259,14 @@ export default function App() {
     }
   };
 
-  const fetchUserSubmissions = async () => {
-    if (!username.trim()) return;
+  const fetchUserSubmissions = async (nameToFetch?: string) => {
+    const targetUsername = nameToFetch || username;
+    if (!targetUsername.trim()) return;
     setIsFetchingUser(true);
     try {
       // We fetch all submissions for the user. This is the most efficient way to check 
       // AC status for all filtered problems at once using the AtCoder Problems API.
-      const res = await fetch(`https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user=${username.trim()}&from_second=0`);
+      const res = await fetch(`https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user=${targetUsername.trim()}&from_second=0`);
       if (!res.ok) throw new Error('Failed to fetch submissions');
       
       const submissions = await res.json();
