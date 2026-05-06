@@ -3,11 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Problem, ProblemModel, MergedProblem } from './types';
 import { getDifficultyColor, getDifficultyColorClass, getDifficultyColorHex, getHexByColorName } from './utils';
-import { Search, Filter, ArrowUpDown, Loader2, RefreshCw, CheckCircle2, Bookmark, BookmarkCheck, ListTodo, Trophy, Plus, FolderPlus, FolderOpen, Trash2, X } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, Loader2, RefreshCw, CheckCircle2, Bookmark, BookmarkCheck, ListTodo, Trophy, Plus, FolderPlus, FolderOpen, Trash2, X, LogIn, LogOut } from 'lucide-react';
 import Calendar from './Calendar';
+import { auth } from './firebase';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { getUserProfile, saveUserProfile, getCustomLists, saveCustomList, deleteCustomListDb, getCalendarNotes, saveCalendarNote } from './firebaseUtils';
 
 const COLORS = ['Gray', 'Brown', 'Green', 'Cyan', 'Blue', 'Yellow', 'Orange', 'Red', 'Unrated'];
 
@@ -53,22 +56,21 @@ export default function App() {
   const [maxRating, setMaxRating] = useState<number | ''>('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   
-  const [username, setUsername] = useState(() => localStorage.getItem('atcoder_username') || '');
+  const [username, setUsername] = useState('');
   const [solvedProblems, setSolvedProblems] = useState<Set<string>>(new Set());
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({});
   const [isFetchingUser, setIsFetchingUser] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'todo' | 'custom'>('list');
-  const [todoList, setTodoList] = useState<Set<string>>(() => {
-    const saved = localStorage.getItem('atcoder_todo_list');
-    return saved ? new Set(JSON.parse(saved)) : new Set();
-  });
+  const [todoList, setTodoList] = useState<Set<string>>(new Set());
   
-  const [customLists, setCustomLists] = useState<CustomList[]>(() => {
-    const saved = localStorage.getItem('atcoder_custom_lists');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [customLists, setCustomLists] = useState<CustomList[]>([]);
   const [currentCustomListId, setCurrentCustomListId] = useState<string | null>(null);
+
+  const [calendarNotes, setCalendarNotes] = useState<Record<string, string>>({});
+  const [user, setUser] = useState<User | null>(null);
+  const [isDbLoaded, setIsDbLoaded] = useState(false);
+  const isFirstRender = useRef(true);
   
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [problemToAdd, setProblemToAdd] = useState<string | null>(null);
@@ -78,16 +80,53 @@ export default function App() {
   const itemsPerPage = 100;
 
   useEffect(() => {
-    localStorage.setItem('atcoder_username', username);
-  }, [username]);
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      if (u) {
+        // Load data from DB
+        const profile = await getUserProfile();
+        if (profile) {
+          setUsername(profile.atcoderUsername || '');
+          setSelectedColors(new Set(profile.selectedColors || COLORS));
+          setMinRating(profile.minRating !== null ? profile.minRating : '');
+          setMaxRating(profile.maxRating !== null ? profile.maxRating : '');
+          setTodoList(new Set(profile.todoList || []));
+        }
+        
+        const lists = await getCustomLists();
+        setCustomLists(lists);
+
+        const notes = await getCalendarNotes();
+        const notesMap: Record<string, string> = {};
+        notes.forEach(n => notesMap[n.date] = n.note);
+        setCalendarNotes(notesMap);
+
+        setIsDbLoaded(true);
+      } else {
+        setIsDbLoaded(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem('atcoder_todo_list', JSON.stringify(Array.from(todoList)));
-  }, [todoList]);
-
-  useEffect(() => {
-    localStorage.setItem('atcoder_custom_lists', JSON.stringify(customLists));
-  }, [customLists]);
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (user && isDbLoaded) {
+      const handler = setTimeout(() => {
+        saveUserProfile({
+          atcoderUsername: username,
+          selectedColors: Array.from(selectedColors),
+          minRating: minRating === '' ? null : minRating,
+          maxRating: maxRating === '' ? null : maxRating,
+          todoList: Array.from(todoList)
+        });
+      }, 1000);
+      return () => clearTimeout(handler);
+    }
+  }, [username, selectedColors, minRating, maxRating, todoList, user, isDbLoaded]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -140,7 +179,7 @@ export default function App() {
     setIsAddModalOpen(true);
   };
 
-  const createListAndAddProblem = () => {
+  const createListAndAddProblem = async () => {
     if (!newListName.trim() || !problemToAdd) return;
     const newList: CustomList = {
       id: Date.now().toString(),
@@ -151,23 +190,67 @@ export default function App() {
     setNewListName('');
     setIsAddModalOpen(false);
     setProblemToAdd(null);
+    if (user) {
+      await saveCustomList(newList.id, { name: newList.name, problems: newList.problems });
+    }
   };
 
-  const toggleProblemInCustomList = (listId: string, problemId: string) => {
+  const toggleProblemInCustomList = async (listId: string, problemId: string) => {
     setCustomLists(prev => prev.map(list => {
       if (list.id !== listId) return list;
       const exists = list.problems.includes(problemId);
+      const newProblems = exists ? list.problems.filter(id => id !== problemId) : [...list.problems, problemId];
+      if (user) {
+        saveCustomList(listId, { name: list.name, problems: newProblems });
+      }
       return {
         ...list,
-        problems: exists ? list.problems.filter(id => id !== problemId) : [...list.problems, problemId]
+        problems: newProblems
       };
     }));
   };
 
-  const deleteCustomList = (listId: string) => {
+  const deleteCustomList = async (listId: string) => {
     setCustomLists(prev => prev.filter(l => l.id !== listId));
     if (currentCustomListId === listId) {
       setCurrentCustomListId(null);
+    }
+    if (user) {
+      await deleteCustomListDb(listId);
+    }
+  };
+
+  const handleSaveNote = async (dateStr: string, note: string) => {
+    setCalendarNotes(prev => ({
+      ...prev,
+      [dateStr]: note
+    }));
+    if (user) {
+      await saveCalendarNote(dateStr, note);
+    }
+  };
+
+  const loginWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      setSolvedProblems(new Set());
+      setDailyCounts({});
+      setUsername('');
+      setTodoList(new Set());
+      setCustomLists([]);
+      setCalendarNotes({});
+      setIsDbLoaded(false);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -295,22 +378,46 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-3">
-            <input
-              type="text"
-              placeholder="AtCoder Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && fetchUserSubmissions()}
-              className="w-32 sm:w-48 px-2 sm:px-3 py-1.5 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-            <button
-              onClick={fetchUserSubmissions}
-              disabled={isFetchingUser || !username.trim()}
-              className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {isFetchingUser ? <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" /> : <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4" />}
-              <span className="hidden sm:inline">{isFetchingUser ? 'Checking...' : 'Check AC'}</span>
-            </button>
+            {!user ? (
+              <button
+                onClick={loginWithGoogle}
+                className="flex items-center justify-center gap-2 px-3 sm:px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Login</span>
+              </button>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 border border-gray-200 bg-gray-50 rounded-lg p-1 pr-2">
+                  <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200">
+                    {user.photoURL ? <img src={user.photoURL} alt="Profile" /> : <div className="w-full h-full bg-indigo-200" />}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="AtCoder Username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && fetchUserSubmissions()}
+                    className="w-28 sm:w-36 bg-transparent text-xs sm:text-sm focus:outline-none placeholder-gray-400"
+                  />
+                </div>
+                <button
+                  onClick={fetchUserSubmissions}
+                  disabled={isFetchingUser || !username.trim()}
+                  className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isFetchingUser ? <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" /> : <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4" />}
+                  <span className="hidden sm:inline">{isFetchingUser ? 'Syncing...' : 'Sync AC'}</span>
+                </button>
+                <button
+                  onClick={logout}
+                  className="flex items-center justify-center p-1.5 sm:px-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+                  title="Log out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </>
+            )}
           </div>
         </div>
         
@@ -546,7 +653,7 @@ export default function App() {
           </div>
         </div>
         ) : activeTab === 'calendar' ? (
-          <Calendar dailyCounts={dailyCounts} username={username} />
+          <Calendar dailyCounts={dailyCounts} username={username} notes={calendarNotes} onSaveNote={handleSaveNote} />
         ) : activeTab === 'custom' ? (
           <div className="flex flex-col lg:flex-row gap-6">
             <aside className="w-full lg:w-72 flex-shrink-0">

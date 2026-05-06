@@ -1,14 +1,19 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Target } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Target, Edit3, X } from 'lucide-react';
 
 interface CalendarProps {
   dailyCounts: Record<string, number>;
   username: string;
+  notes: Record<string, string>;
+  onSaveNote: (dateStr: string, note: string) => void;
 }
 
-export default function Calendar({ dailyCounts, username }: CalendarProps) {
+export default function Calendar({ dailyCounts, username, notes, onSaveNote }: CalendarProps) {
   const [dailyGoal, setDailyGoal] = useState(5);
   const [currentDate, setCurrentDate] = useState(new Date());
+
+  const [selectedNoteDate, setSelectedNoteDate] = useState<string | null>(null);
+  const [editingNote, setEditingNote] = useState('');
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -84,10 +89,15 @@ export default function Calendar({ dailyCounts, username }: CalendarProps) {
           const count = dailyCounts[dateStr] || 0;
           const isGoalMet = count >= dailyGoal;
           const isToday = isCurrentMonth && day === todayDate;
+          const hasNote = !!notes[dateStr];
           
           return (
             <div 
               key={day} 
+              onClick={() => {
+                setSelectedNoteDate(dateStr);
+                setEditingNote(notes[dateStr] || '');
+              }}
               className={`relative h-16 sm:h-20 lg:h-24 rounded-lg sm:rounded-xl border p-1 sm:p-2 lg:p-3 transition-all duration-200 group cursor-pointer
                 ${isGoalMet ? 'bg-green-500 border-green-600 shadow-sm hover:bg-green-600' : 
                   count > 0 ? 'bg-yellow-100 border-yellow-300 hover:bg-yellow-200' : 
@@ -95,9 +105,12 @@ export default function Calendar({ dailyCounts, username }: CalendarProps) {
                 ${isToday ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
               `}
             >
-              <span className={`text-xs sm:text-sm font-bold ${isGoalMet ? 'text-white' : count > 0 ? 'text-yellow-800' : 'text-gray-700'}`}>
-                {day}
-              </span>
+              <div className="flex justify-between items-start">
+                <span className={`text-xs sm:text-sm font-bold ${isGoalMet ? 'text-white' : count > 0 ? 'text-yellow-800' : 'text-gray-700'}`}>
+                  {day}
+                </span>
+                {hasNote && <Edit3 className={`w-3 h-3 sm:w-4 sm:h-4 ${isGoalMet ? 'text-green-100' : 'text-blue-400'}`} />}
+              </div>
               
               {count > 0 && (
                 <div className={`absolute bottom-1 right-1 sm:bottom-2 sm:right-2 lg:bottom-3 lg:right-3 flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 rounded-full font-bold text-[10px] sm:text-xs lg:text-sm shadow-sm
@@ -116,6 +129,51 @@ export default function Calendar({ dailyCounts, username }: CalendarProps) {
           );
         })}
       </div>
+
+      {selectedNoteDate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-blue-600" />
+                Notes for {selectedNoteDate}
+              </h3>
+              <button 
+                onClick={() => setSelectedNoteDate(null)}
+                className="p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700 rounded-md transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-4 flex flex-col gap-4">
+              <textarea
+                value={editingNote}
+                onChange={(e) => setEditingNote(e.target.value)}
+                placeholder="What did you learn today?..."
+                className="w-full h-32 p-3 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setSelectedNoteDate(null)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    onSaveNote(selectedNoteDate, editingNote);
+                    setSelectedNoteDate(null);
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Save Note
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
