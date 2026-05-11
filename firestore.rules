@@ -13,13 +13,14 @@ service cloud.firestore {
     }
 
     function isValidUserProfile(data) {
-      return data.keys().hasAll(['atcoderUsername', 'selectedColors', 'minRating', 'maxRating', 'todoList', 'updatedAt']) &&
-             data.size() == 6 &&
+      return data.keys().hasAll(['atcoderUsername', 'selectedColors', 'minRating', 'maxRating', 'todoList', 'dailyGoal', 'updatedAt']) &&
+             data.size() == 7 &&
              data.atcoderUsername is string && data.atcoderUsername.size() <= 100 &&
              isValidStrList(data.selectedColors, 20) &&
              (data.minRating == null || (data.minRating is number)) &&
              (data.maxRating == null || (data.maxRating is number)) &&
              isValidStrList(data.todoList, 1500) &&
+             data.dailyGoal is number &&
              data.updatedAt == request.time;
     }
 
@@ -42,7 +43,7 @@ service cloud.firestore {
       allow read: if isSignedIn() && request.auth.uid == userId;
       allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidUserProfile(incoming());
       allow update: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidUserProfile(incoming()) && (
-        incoming().diff(existing()).affectedKeys().hasOnly(['atcoderUsername', 'selectedColors', 'minRating', 'maxRating', 'todoList', 'updatedAt'])
+        incoming().diff(existing()).affectedKeys().hasOnly(['atcoderUsername', 'selectedColors', 'minRating', 'maxRating', 'todoList', 'dailyGoal', 'updatedAt'])
       );
       
       match /customLists/{listId} {

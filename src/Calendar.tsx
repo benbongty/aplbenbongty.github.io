@@ -1,15 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Target, Edit3, X } from 'lucide-react';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 
 interface CalendarProps {
   dailyCounts: Record<string, number>;
   username: string;
   notes: Record<string, string>;
   onSaveNote: (dateStr: string, note: string) => void;
+  dailyGoal: number;
+  setDailyGoal: (goal: number) => void;
 }
 
-export default function Calendar({ dailyCounts, username, notes, onSaveNote }: CalendarProps) {
-  const [dailyGoal, setDailyGoal] = useState(5);
+const stripHtml = (html: string) => {
+  if (typeof window !== 'undefined') {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return doc.body.textContent || "";
+  }
+  return html.replace(/<[^>]*>?/gm, '');
+};
+
+const quillModules = {
+  toolbar: [
+    ['bold', 'italic'],
+    [{ color: ['#000000', '#e60000', '#008a00', '#0066cc', '#ff9900'] }]
+  ]
+};
+
+export default function Calendar({ dailyCounts, username, notes, onSaveNote, dailyGoal, setDailyGoal }: CalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const [selectedNoteDate, setSelectedNoteDate] = useState<string | null>(null);
@@ -90,6 +108,7 @@ export default function Calendar({ dailyCounts, username, notes, onSaveNote }: C
           const isGoalMet = count >= dailyGoal;
           const isToday = isCurrentMonth && day === todayDate;
           const hasNote = !!notes[dateStr];
+          const plainNote = hasNote ? stripHtml(notes[dateStr]) : '';
           
           return (
             <div 
@@ -121,8 +140,13 @@ export default function Calendar({ dailyCounts, username, notes, onSaveNote }: C
               )}
 
               {/* Tooltip */}
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:block z-10 w-max bg-gray-900 text-white text-xs font-medium rounded-lg py-2 px-3 shadow-xl transform scale-95 group-hover:scale-100 transition-transform origin-bottom">
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:block z-10 w-max max-w-[250px] bg-gray-900 text-white text-xs font-medium rounded-lg py-2 px-3 shadow-xl transform scale-95 group-hover:scale-100 transition-transform origin-bottom text-center">
                 {count === 0 ? 'No problems solved' : `${count} problem${count !== 1 ? 's' : ''} solved`} on {dateStr}
+                {hasNote && plainNote && (
+                  <div className="mt-1 pt-1 border-t border-gray-700 text-gray-300 line-clamp-3 text-left">
+                    {plainNote}
+                  </div>
+                )}
                 <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
               </div>
             </div>
@@ -131,8 +155,8 @@ export default function Calendar({ dailyCounts, username, notes, onSaveNote }: C
       </div>
 
       {selectedNoteDate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-[2px]">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col">
             <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <Edit3 className="w-4 h-4 text-blue-600" />
@@ -147,12 +171,16 @@ export default function Calendar({ dailyCounts, username, notes, onSaveNote }: C
             </div>
             
             <div className="p-4 flex flex-col gap-4">
-              <textarea
-                value={editingNote}
-                onChange={(e) => setEditingNote(e.target.value)}
-                placeholder="What did you learn today?..."
-                className="w-full h-32 p-3 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+              <div className="h-64 sm:h-80 mb-2">
+                <ReactQuill 
+                  theme="snow" 
+                  value={editingNote} 
+                  onChange={setEditingNote}
+                  modules={quillModules}
+                  className="h-full pb-10"
+                  placeholder="What did you learn today?..."
+                />
+              </div>
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setSelectedNoteDate(null)}
@@ -162,7 +190,9 @@ export default function Calendar({ dailyCounts, username, notes, onSaveNote }: C
                 </button>
                 <button
                   onClick={() => {
-                    onSaveNote(selectedNoteDate, editingNote);
+                    // Save note but strip empty HTML tags if there's no actual content
+                    const cleanNote = stripHtml(editingNote).trim() === '' ? '' : editingNote;
+                    onSaveNote(selectedNoteDate, cleanNote);
                     setSelectedNoteDate(null);
                   }}
                   className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 transition-colors"

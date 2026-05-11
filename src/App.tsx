@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Problem, ProblemModel, MergedProblem } from './types';
 import { getDifficultyColor, getDifficultyColorClass, getDifficultyColorHex, getHexByColorName } from './utils';
-import { Search, Filter, ArrowUpDown, Loader2, RefreshCw, CheckCircle2, Bookmark, BookmarkCheck, ListTodo, Trophy, Plus, FolderPlus, FolderOpen, Trash2, X, LogIn, LogOut } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, Loader2, RefreshCw, CheckCircle2, Bookmark, BookmarkCheck, ListTodo, Trophy, Plus, FolderPlus, FolderOpen, Trash2, X, LogIn, LogOut, Dices } from 'lucide-react';
 import Calendar from './Calendar';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
@@ -55,6 +55,7 @@ export default function App() {
   const [minRating, setMinRating] = useState<number | ''>('');
   const [maxRating, setMaxRating] = useState<number | ''>('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [dailyGoal, setDailyGoal] = useState<number>(5);
   
   const [username, setUsername] = useState('');
   const [solvedProblems, setSolvedProblems] = useState<Set<string>>(new Set());
@@ -93,6 +94,7 @@ export default function App() {
           setMinRating(profile.minRating !== null ? profile.minRating : '');
           setMaxRating(profile.maxRating !== null ? profile.maxRating : '');
           setTodoList(new Set(profile.todoList || []));
+          setDailyGoal(profile.dailyGoal !== undefined ? profile.dailyGoal : 5);
         }
         
         const lists = await getCustomLists();
@@ -126,12 +128,13 @@ export default function App() {
           selectedColors: Array.from(selectedColors),
           minRating: minRating === '' ? null : minRating,
           maxRating: maxRating === '' ? null : maxRating,
-          todoList: Array.from(todoList)
+          todoList: Array.from(todoList),
+          dailyGoal: dailyGoal
         });
       }, 1000);
       return () => clearTimeout(handler);
     }
-  }, [username, selectedColors, minRating, maxRating, todoList, user, isDbLoaded]);
+  }, [username, selectedColors, minRating, maxRating, todoList, dailyGoal, user, isDbLoaded]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -239,8 +242,13 @@ export default function App() {
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (err.code === 'auth/unauthorized-domain') {
+        alert('This domain is not authorized for Firebase Authentication. Please add your Cloudflare domain to the Firebase Console -> Authentication -> Settings -> Authorized domains.');
+      } else {
+        alert('Login failed: ' + (err.message || 'Unknown error.'));
+      }
     }
   };
 
@@ -259,8 +267,8 @@ export default function App() {
     }
   };
 
-  const fetchUserSubmissions = async (nameToFetch?: string) => {
-    const targetUsername = nameToFetch || username;
+  const fetchUserSubmissions = async (nameToFetch?: string | React.SyntheticEvent) => {
+    const targetUsername = typeof nameToFetch === 'string' ? nameToFetch : username;
     if (!targetUsername.trim()) return;
     setIsFetchingUser(true);
     try {
@@ -540,6 +548,27 @@ export default function App() {
                     />
                   </div>
                 </div>
+
+                {/* Random Problem Card */}
+                <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-200">
+                  <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <Dices className="w-4 h-4" /> Random Problem
+                  </h2>
+                  <p className="text-xs text-gray-500 mb-4">Picks a random problem from the currently filtered list.</p>
+                  <button
+                    onClick={() => {
+                      if (filteredAndSortedProblems.length === 0) {
+                        alert("No problems match the current filter!");
+                        return;
+                      }
+                      const p = filteredAndSortedProblems[Math.floor(Math.random() * filteredAndSortedProblems.length)];
+                      window.open(`https://atcoder.jp/contests/${p.contest_id}/tasks/${p.id}`, '_blank');
+                    }}
+                    className="w-full px-3 py-2.5 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Dices className="w-4 h-4" /> Go to Random Problem
+                  </button>
+                </div>
               </div>
             </aside>
 
@@ -659,7 +688,7 @@ export default function App() {
           </div>
         </div>
         ) : activeTab === 'calendar' ? (
-          <Calendar dailyCounts={dailyCounts} username={username} notes={calendarNotes} onSaveNote={handleSaveNote} />
+          <Calendar dailyCounts={dailyCounts} username={username} notes={calendarNotes} onSaveNote={handleSaveNote} dailyGoal={dailyGoal} setDailyGoal={setDailyGoal} />
         ) : activeTab === 'custom' ? (
           <div className="flex flex-col lg:flex-row gap-6">
             <aside className="w-full lg:w-72 flex-shrink-0">

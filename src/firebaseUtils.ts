@@ -65,12 +65,12 @@ export async function deleteCustomListDb(listId: string) {
   }
 }
 
-export async function getCalendarNotes() {
+export async function getCalendarNotes(): Promise<{date: string, note: string}[]> {
   if (!auth.currentUser) return [];
   const uid = auth.currentUser.uid;
   try {
     const snap = await getDocs(collection(db, `users/${uid}/calendarNotes`));
-    return snap.docs.map(d => ({ date: d.id, ...d.data() }));
+    return snap.docs.map(d => ({ date: d.id, note: d.data().note || '' }));
   } catch(err) {
     handleFirestoreError(err, OperationType.LIST, `users/${uid}/calendarNotes`);
     return [];
