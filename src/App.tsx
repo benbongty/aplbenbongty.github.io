@@ -14,6 +14,16 @@ import { getUserProfile, saveUserProfile, getCustomLists, saveCustomList, delete
 
 const COLORS = ['Gray', 'Brown', 'Green', 'Cyan', 'Blue', 'Yellow', 'Orange', 'Red', 'Unrated'];
 
+const fetchApi = async (url: string, options: RequestInit = {}) => {
+  const apiKey = import.meta.env.VITE_API_KEY;
+  const headers = new Headers(options.headers || {});
+  if (apiKey) {
+    headers.set('Authorization', `Bearer ${apiKey}`);
+    headers.set('x-api-key', apiKey);
+  }
+  return fetch(url, { ...options, headers });
+};
+
 interface CustomList {
   id: string;
   name: string;
@@ -141,8 +151,8 @@ export default function App() {
       try {
         setLoading(true);
         const [problemsRes, modelsRes] = await Promise.all([
-          fetch('https://kenkoooo.com/atcoder/resources/problems.json'),
-          fetch('https://kenkoooo.com/atcoder/resources/problem-models.json')
+          fetchApi('https://kenkoooo.com/atcoder/resources/problems.json'),
+          fetchApi('https://kenkoooo.com/atcoder/resources/problem-models.json')
         ]);
 
         if (!problemsRes.ok || !modelsRes.ok) {
@@ -274,7 +284,7 @@ export default function App() {
     try {
       // We fetch all submissions for the user. This is the most efficient way to check 
       // AC status for all filtered problems at once using the AtCoder Problems API.
-      const res = await fetch(`https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user=${targetUsername.trim()}&from_second=0`);
+      const res = await fetchApi(`https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user=${targetUsername.trim()}&from_second=0`);
       if (!res.ok) throw new Error('Failed to fetch submissions');
       
       const submissions = await res.json();
