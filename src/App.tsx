@@ -6,13 +6,20 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Problem, ProblemModel, MergedProblem } from './types';
 import { getDifficultyColor, getDifficultyColorClass, getDifficultyColorHex, getHexByColorName } from './utils';
-import { Search, Filter, ArrowUpDown, Loader2, RefreshCw, CheckCircle2, Bookmark, BookmarkCheck, ListTodo, Trophy, Plus, FolderPlus, FolderOpen, Trash2, X, LogIn, LogOut, Dices } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, Loader2, RefreshCw, CheckCircle2, Bookmark, BookmarkCheck, ListTodo, Trophy, Plus, FolderPlus, FolderOpen, Trash2, X, LogIn, LogOut, Dices, PlayCircle, PauseCircle, Timer } from 'lucide-react';
 import Calendar from './Calendar';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { getUserProfile, saveUserProfile, getCustomLists, saveCustomList, deleteCustomListDb, getCalendarNotes, saveCalendarNote } from './firebaseUtils';
 
 const COLORS = ['Gray', 'Brown', 'Green', 'Cyan', 'Blue', 'Yellow', 'Orange', 'Red', 'Unrated'];
+
+interface SolveSession {
+  problemId: string;
+  elapsedSeconds: number;
+  isRunning: boolean;
+  startTimestamp?: number;
+}
 
 const fetchApi = async (url: string, options: RequestInit = {}) => {
   const apiKey = import.meta.env.VITE_API_KEY;
@@ -22,6 +29,84 @@ const fetchApi = async (url: string, options: RequestInit = {}) => {
     headers.set('x-api-key', apiKey);
   }
   return fetch(url, { ...options, headers });
+};
+
+const SolvingTimerCard = ({ session, problem, onToggle, onRemove, isSolved }: { session: SolveSession, problem: MergedProblem, onToggle: () => void, onRemove: () => void, isSolved: boolean }) => {
+  const [now, setNow] = useState(Date.now());
+  
+  useEffect(() => {
+    if (!session.isRunning) return;
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [session.isRunning]);
+
+  const totalSeconds = session.elapsedSeconds + (session.isRunning ? Math.floor((now - (session.startTimestamp || now)) / 1000) : 0);
+
+  const formatTime = (secs: number) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    return `${h > 0 ? h.toString().padStart(2, '0') + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 sm:gap-6 relative group overflow-hidden">
+      {isSolved && (
+        <div className="absolute top-0 right-0 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">
+          AC
+        </div>
+      )}
+      
+      <div className="flex-1 min-w-0 flex items-center gap-3">
+        <DifficultyCircle difficulty={problem.difficulty} />
+        <div className="min-w-0">
+          <a
+            href={`https://atcoder.jp/contests/${problem.contest_id}/tasks/${problem.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`font-semibold text-base hover:underline truncate block ${isSolved ? 'text-green-600' : 'text-blue-600'}`}
+          >
+            {problem.title}
+          </a>
+          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+            <span>{problem.contest_id.toUpperCase()}</span>
+            {problem.difficulty !== null && (
+              <span className={getDifficultyColorClass(problem.color || 'Unrated')}>
+                Difficulty: {problem.difficulty}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4 sm:gap-6 mt-4 sm:mt-0 w-full sm:w-auto justify-between sm:justify-start">
+        <div className={`text-3xl font-mono tracking-wider w-[120px] text-right ${session.isRunning ? 'text-indigo-600 font-bold' : 'text-gray-600'}`}>
+          {formatTime(totalSeconds)}
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onToggle}
+            className={`flex items-center justify-center p-2.5 rounded-lg transition-colors ${
+              session.isRunning 
+                ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' 
+                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+            }`}
+            title={session.isRunning ? "Pause Timer" : "Start Timer"}
+          >
+            {session.isRunning ? <PauseCircle className="w-5 h-5" /> : <PlayCircle className="w-5 h-5" />}
+          </button>
+          <button
+            onClick={onRemove}
+            className="flex items-center justify-center p-2.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+            title="Remove from Solving Tab"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 interface CustomList {
@@ -72,8 +157,22 @@ export default function App() {
   const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({});
   const [isFetchingUser, setIsFetchingUser] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'todo' | 'custom'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'todo' | 'custom' | 'solving'>('list');
   const [todoList, setTodoList] = useState<Set<string>>(new Set());
+  
+  const [workingProblems, setWorkingProblems] = useState<Record<string, SolveSession>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('workingProblems');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+    }
+    return {};
+  });
+
+  useEffect(() => {
+    localStorage.setItem('workingProblems', JSON.stringify(workingProblems));
+  }, [workingProblems]);
   
   const [customLists, setCustomLists] = useState<CustomList[]>([]);
   const [currentCustomListId, setCurrentCustomListId] = useState<string | null>(null);
@@ -247,6 +346,57 @@ export default function App() {
       await saveCalendarNote(dateStr, note);
     }
   };
+
+  const toggleSolveTimer = (problemId: string) => {
+    setWorkingProblems(prev => {
+      const session = prev[problemId];
+      if (!session) return prev;
+      if (session.isRunning) {
+        // Pause
+        const now = Date.now();
+        const additional = Math.floor((now - (session.startTimestamp || now)) / 1000);
+        return {
+          ...prev,
+          [problemId]: {
+            ...session,
+            isRunning: false,
+            elapsedSeconds: session.elapsedSeconds + additional,
+            startTimestamp: undefined
+          }
+        };
+      } else {
+        // Start
+        return {
+          ...prev,
+          [problemId]: {
+            ...session,
+            isRunning: true,
+            startTimestamp: Date.now()
+          }
+        };
+      }
+    });
+  };
+
+  const removeWorkingProblem = (problemId: string) => {
+    setWorkingProblems(prev => {
+      const next = { ...prev };
+      delete next[problemId];
+      return next;
+    });
+  };
+
+  const startWorkingOn = (problemId: string) => {
+    setWorkingProblems(prev => {
+      if (prev[problemId]) return prev;
+      return {
+        ...prev,
+        [problemId]: { problemId, elapsedSeconds: 0, isRunning: false }
+      };
+    });
+    setActiveTab('solving');
+  };
+
 
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
@@ -476,6 +626,18 @@ export default function App() {
           >
             Custom Problemsets
           </button>
+          <button 
+            onClick={() => setActiveTab('solving')}
+            className={`py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors flex items-center gap-2 ${activeTab === 'solving' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+          >
+            <Timer className="w-4 h-4" />
+            Solving Tab
+            {Object.keys(workingProblems).length > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                {Object.keys(workingProblems).length}
+              </span>
+            )}
+          </button>
         </div>
       </header>
 
@@ -655,6 +817,13 @@ export default function App() {
                               {todoList.has(p.id) ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
                             </button>
                             <button
+                              onClick={() => startWorkingOn(p.id)}
+                              className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                              title="Work on this problem"
+                            >
+                              <Timer className="w-4 h-4" />
+                            </button>
+                            <button
                               onClick={() => openAddModal(p.id)}
                               className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
                               title="Add to Custom Problemset"
@@ -697,6 +866,43 @@ export default function App() {
             </div>
           </div>
         </div>
+        ) : activeTab === 'solving' ? (
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <Timer className="w-6 h-6 text-indigo-600" />
+              Solving Sessions
+            </h2>
+            {Object.keys(workingProblems).length === 0 ? (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+                <Timer className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-lg font-medium text-gray-900 mb-1">No active solving sessions</p>
+                <p className="text-sm text-gray-500 max-w-md mx-auto mb-6">Start a timer for a problem from the Problem List by clicking the stopwatch icon.</p>
+                <button 
+                  onClick={() => setActiveTab('list')}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+                >
+                  Browse Problems
+                </button>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {Object.values(workingProblems).map(session => {
+                  const p = problems.find(pr => pr.id === session.problemId);
+                  if (!p) return null;
+                  return (
+                    <SolvingTimerCard 
+                      key={session.problemId}
+                      session={session}
+                      problem={p}
+                      onToggle={() => toggleSolveTimer(session.problemId)}
+                      onRemove={() => removeWorkingProblem(session.problemId)}
+                      isSolved={solvedProblems.has(session.problemId)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
         ) : activeTab === 'calendar' ? (
           <Calendar dailyCounts={dailyCounts} username={username} notes={calendarNotes} onSaveNote={handleSaveNote} dailyGoal={dailyGoal} setDailyGoal={setDailyGoal} />
         ) : activeTab === 'custom' ? (
@@ -801,13 +1007,22 @@ export default function App() {
                                   )}
                                 </td>
                                 <td className="px-4 py-2.5 sm:px-6 sm:py-3 text-center">
-                                  <button 
-                                    onClick={() => toggleProblemInCustomList(activeList.id, p.id)}
-                                    className="p-1.5 rounded-md hover:bg-red-50 transition-colors text-gray-400 hover:text-red-500"
-                                    title="Remove from list"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
+                                  <div className="flex items-center justify-center gap-1 sm:gap-2">
+                                    <button 
+                                      onClick={() => startWorkingOn(p.id)}
+                                      className="p-1.5 rounded-md hover:bg-indigo-50 transition-colors text-gray-400 hover:text-indigo-600"
+                                      title="Work on this problem"
+                                    >
+                                      <Timer className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                      onClick={() => toggleProblemInCustomList(activeList.id, p.id)}
+                                      className="p-1.5 rounded-md hover:bg-red-50 transition-colors text-gray-400 hover:text-red-500"
+                                      title="Remove from list"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -912,13 +1127,22 @@ export default function App() {
                             )}
                           </td>
                           <td className="px-4 py-2.5 sm:px-6 sm:py-3 text-center">
-                            <button 
-                              onClick={() => toggleTodo(p.id)}
-                              className="p-1.5 rounded-md hover:bg-red-50 transition-colors text-gray-400 hover:text-red-500"
-                              title="Remove from To-Do"
-                            >
-                              <BookmarkCheck className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-center gap-1 sm:gap-2">
+                              <button 
+                                onClick={() => startWorkingOn(p.id)}
+                                className="p-1.5 rounded-md hover:bg-indigo-50 transition-colors text-gray-400 hover:text-indigo-600"
+                                title="Work on this problem"
+                              >
+                                <Timer className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => toggleTodo(p.id)}
+                                className="p-1.5 rounded-md hover:bg-red-50 transition-colors text-gray-400 hover:text-red-500"
+                                title="Remove from To-Do"
+                              >
+                                <BookmarkCheck className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
